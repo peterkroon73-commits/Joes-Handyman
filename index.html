@@ -35,6 +35,28 @@
 <body class="bg-slate-100 text-slate-800 min-h-screen">
 
   <!-- ==========================================================================
+       PASSWORD PROTECTION OVERLAY
+       Visible by default so the dashboard is never shown underneath, even
+       for a flash, before the script below has a chance to run. The script
+       hides it immediately if this browser already has a saved session.
+       ========================================================================== -->
+  <div id="passwordGate" class="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-amber-600 to-orange-700 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
+      <div class="text-4xl mb-3">🔒</div>
+      <h1 class="text-xl font-bold text-slate-800 mb-1">Joe's Handyman</h1>
+      <p class="text-sm text-slate-500 mb-6">Enter your access password to continue</p>
+      <form id="passwordForm" class="space-y-3">
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Password"
+               class="w-full rounded-lg border border-slate-300 px-4 py-3 text-center focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+        <p id="passwordError" class="text-sm text-rose-600 hidden">Incorrect password. Try again.</p>
+        <button type="submit" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-3 rounded-lg shadow">
+          Unlock
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
        BUSINESS PROFILE HEADER
        ========================================================================== -->
   <header class="bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-lg no-print">
@@ -50,6 +72,10 @@
         <p><span class="font-semibold">ABN:</span> 72 478 252 687</p>
         <p><span class="font-semibold">Mobile:</span> 0430 033 312</p>
         <p><span class="font-semibold">Email:</span> sandy19673@bigpond.com</p>
+        <button id="logoutBtn" type="button"
+                class="mt-1 text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg transition">
+          🔒 Log Out
+        </button>
       </div>
     </div>
   </header>
@@ -430,10 +456,71 @@
 
 <script>
 /* ============================================================================
-   TAB NAVIGATION — wired first, before anything else, with zero dependency
-   on Supabase or any other code below. Even if every other part of this
-   script throws, breaks, or never runs, clicking a tab will always switch
-   the visible panel. This block only touches the DOM and CSS classes.
+   PASSWORD PROTECTION — runs first of all, in its own isolated IIFE with no
+   shared variables. This is a simple client-side lock screen, not real
+   security: anyone can view this file's source and read ACCESS_PASSWORD
+   below, and the Supabase anon key further down is public regardless of
+   this gate (data access is actually controlled by Supabase's Row Level
+   Security policies in schema.sql). Use this to keep the dashboard out of
+   casual view on a shared device — not to protect sensitive data on its own.
+
+   To change the password, edit ACCESS_PASSWORD below.
+   ============================================================================ */
+(function () {
+  const ACCESS_PASSWORD = 'JoeHandy2026'; // <-- change this to update the password
+  const AUTH_KEY = 'handyman_authed';
+
+  const gate = document.getElementById('passwordGate');
+  const form = document.getElementById('passwordForm');
+  const input = document.getElementById('passwordInput');
+  const errorMsg = document.getElementById('passwordError');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  function unlock() {
+    try { localStorage.setItem(AUTH_KEY, 'true'); } catch (err) { console.error('Could not save session:', err); }
+    if (gate) gate.classList.add('hidden');
+  }
+
+  function lock() {
+    try { localStorage.removeItem(AUTH_KEY); } catch (err) { console.error('Could not clear session:', err); }
+    if (gate) gate.classList.remove('hidden');
+    if (input) { input.value = ''; input.focus(); }
+  }
+
+  // Already unlocked on this device/browser? Skip straight past the gate.
+  try {
+    if (localStorage.getItem(AUTH_KEY) === 'true' && gate) {
+      gate.classList.add('hidden');
+    }
+  } catch (err) {
+    // localStorage unavailable (private browsing, etc.) — leave gate visible.
+    console.error('localStorage unavailable:', err);
+  }
+
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (input.value === ACCESS_PASSWORD) {
+        if (errorMsg) errorMsg.classList.add('hidden');
+        unlock();
+      } else {
+        if (errorMsg) errorMsg.classList.remove('hidden');
+        input.value = '';
+        input.focus();
+      }
+    });
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', lock);
+  }
+})();
+
+/* ============================================================================
+   TAB NAVIGATION — wired next, entirely independent of the password gate
+   above and everything below it. Even if every other part of this script
+   throws, breaks, or never runs, clicking a tab will always switch the
+   visible panel. This block only touches the DOM and CSS classes.
    ============================================================================ */
 var tabButtons = document.querySelectorAll('.tab-btn');
 var tabPanels = {
