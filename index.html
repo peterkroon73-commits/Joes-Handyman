@@ -12,11 +12,13 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
-  /* Print styles: hide everything except the invoice print area when printing */
+  /* Print styles: hide everything except whichever .print-target is active
+     (the invoice layout or the expense report), shared by both so only one
+     needs toggling to display:block at a time. */
   @media print {
     body * { visibility: hidden; }
-    #printArea, #printArea * { visibility: visible; }
-    #printArea {
+    .print-target, .print-target * { visibility: visible; }
+    .print-target {
       position: absolute;
       top: 0;
       left: 0;
@@ -24,7 +26,7 @@
     }
     .no-print { display: none !important; }
   }
-  #printArea { display: none; }
+  .print-target { display: none; }
 
   /* Small helper for smooth tab fade-in */
   .tab-panel { animation: fadeIn 0.15s ease-in; }
@@ -193,7 +195,7 @@
     <!-- ========================================================================
          PRINT-FRIENDLY INVOICE LAYOUT (hidden on screen, shown only via print)
          ======================================================================== -->
-    <div id="printArea">
+    <div id="printArea" class="print-target">
       <div style="max-width:700px;margin:0 auto;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #d97706;padding-bottom:16px;margin-bottom:16px;">
           <div>
@@ -231,6 +233,74 @@
         </div>
 
         <p style="margin-top:32px;font-size:11px;color:#94a3b8;">Thank you for your business — Joe's Handyman.</p>
+      </div>
+    </div>
+
+    <!-- ========================================================================
+         EMAIL INVOICE VERIFICATION POPUP
+         Opens a "mailto:" link (the device's own email app) pre-filled with
+         the invoice — there is no third-party email-sending service behind
+         this; it mirrors the same approach used in the woodworking app.
+         ======================================================================== -->
+    <div id="emailInvoiceModal" class="hidden no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+      <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+        <h2 class="text-lg font-semibold text-slate-800 mb-1">Email Invoice</h2>
+        <p class="text-sm text-slate-500 mb-4">
+          This opens your device's email app with the invoice pre-filled. Check the recipient below, then send it from there.
+        </p>
+
+        <label class="block text-sm font-medium text-slate-600 mb-1">Send to</label>
+        <input id="emailInvoiceTo" type="email" placeholder="client@example.com"
+               class="w-full rounded-lg border border-slate-300 px-3 py-2 mb-4 focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+
+        <div class="flex gap-3">
+          <button id="emailInvoiceConfirmBtn" type="button"
+                  class="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 rounded-lg shadow">
+            Open Email App
+          </button>
+          <button id="emailInvoiceCancelBtn" type="button"
+                  class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 rounded-lg">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================
+         PRINT-FRIENDLY EXPENSE REPORT (hidden on screen, shown only via print)
+         ======================================================================== -->
+    <div id="expensePrintArea" class="print-target">
+      <div style="max-width:700px;margin:0 auto;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #d97706;padding-bottom:16px;margin-bottom:16px;">
+          <div>
+            <h1 style="margin:0;font-size:24px;">Joe's Handyman</h1>
+            <p style="margin:4px 0 0;font-size:12px;">ABN: 72 478 252 687</p>
+            <p style="margin:2px 0 0;font-size:12px;">Mobile: 0430 033 312 &nbsp;|&nbsp; Email: sandy19673@bigpond.com</p>
+          </div>
+          <div style="text-align:right;">
+            <h2 style="margin:0;font-size:20px;color:#d97706;">EXPENSE REPORT</h2>
+            <p style="margin:4px 0 0;font-size:12px;" id="expPrintRange"></p>
+            <p style="margin:2px 0 0;font-size:12px;" id="expPrintGenerated"></p>
+          </div>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#fef3c7;text-align:left;">
+              <th style="padding:8px;border:1px solid #e2e8f0;">Date</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;">Category</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;">Description</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="expPrintRows"></tbody>
+        </table>
+
+        <div style="text-align:right;margin-top:12px;">
+          <p style="font-size:16px;font-weight:bold;">Total: <span id="expPrintTotal"></span></p>
+        </div>
+
+        <p style="margin-top:32px;font-size:11px;color:#94a3b8;">Generated by the Joe's Handyman business dashboard.</p>
       </div>
     </div>
 
@@ -346,7 +416,24 @@
       </div>
 
       <div class="bg-white rounded-xl shadow p-5">
-        <h2 class="text-lg font-semibold mb-4 text-slate-800">Expense Log</h2>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-semibold text-slate-800">Expense Log</h2>
+          <button id="printExpenseReportBtn" type="button"
+                  class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-4 py-2 rounded-lg text-sm">
+            🖨️ Print Expense Report
+          </button>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-3 mb-4">
+          <input id="expSearchInput" type="text" placeholder="Search description or category..."
+                 class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+          <select id="expDateFilter" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="all">All Time</option>
+            <option value="month">This Month</option>
+            <option value="fy">This Financial Year</option>
+          </select>
+        </div>
+
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
@@ -364,6 +451,7 @@
             </tbody>
           </table>
         </div>
+        <p id="expensesFilteredTotal" class="text-right text-sm font-medium text-slate-600 mt-3">Total shown: $0.00</p>
       </div>
     </section>
 
@@ -732,6 +820,7 @@ async function loadInvoices() {
         </select>
       </td>
       <td class="py-2 pl-2 text-right space-x-2 whitespace-nowrap">
+        <button data-id="${inv.id}" class="email-invoice-btn text-emerald-600 hover:underline text-xs">Email</button>
         <button data-id="${inv.id}" class="print-btn text-sky-600 hover:underline text-xs">Print</button>
         <button data-id="${inv.id}" class="delete-invoice-btn text-rose-500 hover:underline text-xs">Delete</button>
       </td>
@@ -766,6 +855,11 @@ document.getElementById('invoicesBody').addEventListener('click', async (e) => {
     const inv = (window.__invoicesCache || []).find((i) => i.id === id);
     if (inv) printInvoice(inv);
   }
+
+  if (e.target.classList.contains('email-invoice-btn')) {
+    const inv = (window.__invoicesCache || []).find((i) => i.id === id);
+    if (inv) openEmailInvoiceModal(inv);
+  }
 });
 
 function printInvoice(inv) {
@@ -788,6 +882,86 @@ function printInvoice(inv) {
   window.print();
   printArea.style.display = 'none';
 }
+
+/* ----------------------------------------------------------------------------
+   Email Invoice — opens a verification popup, then hands off to a plain
+   "mailto:" link (the device's own email app). This is the same client-side
+   approach used for "Email Quote" in the woodworking app: no third-party
+   email API or backend is involved, so nothing is sent automatically —
+   the user still hits send themselves in their own email app.
+   -------------------------------------------------------------------------- */
+let emailInvoiceTarget = null;
+
+function openEmailInvoiceModal(inv) {
+  emailInvoiceTarget = inv;
+  const toInput = document.getElementById('emailInvoiceTo');
+  toInput.value = inv.client_email || '';
+  document.getElementById('emailInvoiceModal').classList.remove('hidden');
+  toInput.focus();
+}
+
+function closeEmailInvoiceModal() {
+  document.getElementById('emailInvoiceModal').classList.add('hidden');
+  emailInvoiceTarget = null;
+}
+
+function buildInvoiceEmailSubject(inv) {
+  return `Invoice from Joe's Handyman — ${inv.client_name}`;
+}
+
+function buildInvoiceEmailBody(inv) {
+  const lines = [
+    `Hi ${inv.client_name},`,
+    '',
+    'Please find your invoice details below.',
+    '',
+    '----------------------------------------',
+    'INVOICE',
+    '----------------------------------------',
+  ];
+  (inv.line_items || []).forEach((item) => {
+    lines.push(`${item.description} — Qty ${item.qty} x ${money(item.rate)} = ${money(item.amount)}`);
+  });
+  lines.push(
+    '',
+    `Total: ${money(inv.total_amount)}`,
+    `Status: ${inv.status}`,
+    '',
+    'Thank you for your business.',
+    '',
+    "Joe's Handyman",
+    'ABN: 72 478 252 687',
+    'Mobile: 0430 033 312',
+    'Email: sandy19673@bigpond.com'
+  );
+  // mailto: bodies need CRLF line endings — several mail apps otherwise
+  // render the whole thing as one run-on paragraph.
+  return lines.join('\r\n');
+}
+
+document.getElementById('emailInvoiceConfirmBtn').addEventListener('click', () => {
+  if (!emailInvoiceTarget) return;
+
+  const to = (document.getElementById('emailInvoiceTo').value || '').trim();
+  if (!/^\S+@\S+\.\S+$/.test(to)) {
+    alert('Please enter a valid email address before sending.');
+    return;
+  }
+
+  const subject = buildInvoiceEmailSubject(emailInvoiceTarget);
+  const body = buildInvoiceEmailBody(emailInvoiceTarget);
+  const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  const a = document.createElement('a');
+  a.href = mailtoUrl;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  closeEmailInvoiceModal();
+});
+
+document.getElementById('emailInvoiceCancelBtn').addEventListener('click', closeEmailInvoiceModal);
 
 /* ============================================================================
    TAB 2: MANUAL INCOME
@@ -885,6 +1059,8 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async () => 
   loadExpenses();
 });
 
+let expensesCache = [];
+
 async function loadExpenses() {
   const tbody = document.getElementById('expensesBody');
   if (!supabase) return;
@@ -896,27 +1072,77 @@ async function loadExpenses() {
 
   if (error) {
     tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-500">Error: ${error.message}</td></tr>`;
+    expensesCache = [];
     return;
   }
 
-  if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">No expenses logged yet.</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = data.map((row) => `
-    <tr class="border-b border-slate-100">
-      <td class="py-2 pr-2">${row.date}</td>
-      <td class="py-2 px-2">${row.category}</td>
-      <td class="py-2 px-2">${row.description || '—'}</td>
-      <td class="py-2 px-2">${money(row.amount)}</td>
-      <td class="py-2 px-2">${row.receipt_url ? `<a href="${row.receipt_url}" target="_blank" rel="noopener" class="text-sky-600 hover:underline">View</a>` : '—'}</td>
-      <td class="py-2 pl-2 text-right">
-        <button data-id="${row.id}" class="delete-expense-btn text-rose-500 hover:underline text-xs">Delete</button>
-      </td>
-    </tr>
-  `).join('');
+  expensesCache = data || [];
+  applyExpenseFilters();
 }
+
+// Australian financial year: 1 July - 30 June.
+function isInSelectedDateRange(dateStr, rangeKey) {
+  if (rangeKey === 'all') return true;
+
+  const d = new Date(`${dateStr}T00:00:00`);
+  const now = new Date();
+
+  if (rangeKey === 'month') {
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }
+
+  if (rangeKey === 'fy') {
+    const fyStartYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const fyStart = new Date(fyStartYear, 6, 1);
+    const fyEnd = new Date(fyStartYear + 1, 5, 30, 23, 59, 59);
+    return d >= fyStart && d <= fyEnd;
+  }
+
+  return true;
+}
+
+function getFilteredExpenses() {
+  const term = (document.getElementById('expSearchInput').value || '').trim().toLowerCase();
+  const rangeKey = document.getElementById('expDateFilter').value;
+
+  return expensesCache.filter((row) => {
+    const matchesTerm = !term
+      || (row.description || '').toLowerCase().includes(term)
+      || (row.category || '').toLowerCase().includes(term);
+    return matchesTerm && isInSelectedDateRange(row.date, rangeKey);
+  });
+}
+
+function renderExpensesTable(rows) {
+  const tbody = document.getElementById('expensesBody');
+
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">No expenses match your search/filter.</td></tr>`;
+  } else {
+    tbody.innerHTML = rows.map((row) => `
+      <tr class="border-b border-slate-100">
+        <td class="py-2 pr-2">${row.date}</td>
+        <td class="py-2 px-2">${row.category}</td>
+        <td class="py-2 px-2">${row.description || '—'}</td>
+        <td class="py-2 px-2">${money(row.amount)}</td>
+        <td class="py-2 px-2">${row.receipt_url ? `<a href="${row.receipt_url}" target="_blank" rel="noopener" class="text-sky-600 hover:underline">View</a>` : '—'}</td>
+        <td class="py-2 pl-2 text-right">
+          <button data-id="${row.id}" class="delete-expense-btn text-rose-500 hover:underline text-xs">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  document.getElementById('expensesFilteredTotal').textContent = `Total shown: ${money(total)}`;
+}
+
+function applyExpenseFilters() {
+  renderExpensesTable(getFilteredExpenses());
+}
+
+document.getElementById('expSearchInput').addEventListener('input', applyExpenseFilters);
+document.getElementById('expDateFilter').addEventListener('change', applyExpenseFilters);
 
 document.getElementById('expensesBody').addEventListener('click', async (e) => {
   if (!e.target.classList.contains('delete-expense-btn')) return;
@@ -924,6 +1150,47 @@ document.getElementById('expensesBody').addEventListener('click', async (e) => {
   const { error } = await supabase.from('handyman_expenses').delete().eq('id', e.target.dataset.id);
   if (error) alert(`Error deleting expense: ${error.message}`);
   else { loadExpenses(); refreshOverview(); }
+});
+
+/* ----------------------------------------------------------------------------
+   Print Expense Report — builds a clean, ink-friendly table from whatever
+   is currently filtered on screen (search term + date range), reusing the
+   same .print-target technique as the invoice print layout so the nav and
+   dashboard chrome are fully hidden during printing.
+   -------------------------------------------------------------------------- */
+function expenseRangeLabel(rangeKey) {
+  if (rangeKey === 'month') return 'This Month';
+  if (rangeKey === 'fy') return 'This Financial Year';
+  return 'All Time';
+}
+
+document.getElementById('printExpenseReportBtn').addEventListener('click', () => {
+  const rows = getFilteredExpenses();
+  const rangeKey = document.getElementById('expDateFilter').value;
+  const term = (document.getElementById('expSearchInput').value || '').trim();
+
+  let rangeLabel = expenseRangeLabel(rangeKey);
+  if (term) rangeLabel += ` — matching "${term}"`;
+
+  document.getElementById('expPrintRange').textContent = rangeLabel;
+  document.getElementById('expPrintGenerated').textContent = `Generated: ${new Date().toLocaleDateString()}`;
+
+  document.getElementById('expPrintRows').innerHTML = rows.map((row) => `
+    <tr>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${row.date}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${row.category}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${row.description || '—'}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">${money(row.amount)}</td>
+    </tr>
+  `).join('');
+
+  const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  document.getElementById('expPrintTotal').textContent = money(total);
+
+  const printArea = document.getElementById('expensePrintArea');
+  printArea.style.display = 'block';
+  window.print();
+  printArea.style.display = 'none';
 });
 
 /* ============================================================================
