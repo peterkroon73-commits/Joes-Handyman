@@ -430,51 +430,97 @@
 
 <script>
 /* ============================================================================
-   SUPABASE CONFIGURATION
-   Replace these two values with your own Supabase project's URL and anon
-   (public) API key — found under Project Settings -> API in your Supabase
-   dashboard. Run schema.sql in the SQL Editor first to create the tables.
+   TAB NAVIGATION — wired first, before anything else, with zero dependency
+   on Supabase or any other code below. Even if every other part of this
+   script throws, breaks, or never runs, clicking a tab will always switch
+   the visible panel. This block only touches the DOM and CSS classes.
    ============================================================================ */
-const SUPABASE_URL = 'https://pqjoypxipbjechumogrb.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_SzP7POOf-wRu3kmU95LvHQ__IV-SkyX';
-
-const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
-const supabase = isConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
-
-if (!isConfigured) {
-  document.getElementById('configWarning').classList.remove('hidden');
-}
-
-/* ----------------------------------------------------------------------------
-   Small helpers
-   -------------------------------------------------------------------------- */
-const money = (n) => `$${Number(n || 0).toFixed(2)}`;
-const todayISO = () => new Date().toISOString().slice(0, 10);
-
-/* ============================================================================
-   TAB NAVIGATION
-   ============================================================================ */
-const tabButtons = document.querySelectorAll('.tab-btn');
-const tabPanels = {
+var tabButtons = document.querySelectorAll('.tab-btn');
+var tabPanels = {
   invoicing: document.getElementById('tab-invoicing'),
   income: document.getElementById('tab-income'),
   expenses: document.getElementById('tab-expenses'),
   overview: document.getElementById('tab-overview'),
 };
 
-tabButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    tabButtons.forEach((b) => b.classList.remove('border-amber-600', 'text-amber-700'));
-    tabButtons.forEach((b) => b.classList.add('border-transparent', 'text-slate-500'));
-    btn.classList.add('border-amber-600', 'text-amber-700');
-    btn.classList.remove('border-transparent', 'text-slate-500');
+function activateTab(tabName) {
+  var targetPanel = tabPanels[tabName];
+  if (!targetPanel) return;
 
-    Object.values(tabPanels).forEach((panel) => panel.classList.add('hidden'));
-    tabPanels[btn.dataset.tab].classList.remove('hidden');
+  for (var i = 0; i < tabButtons.length; i++) {
+    var b = tabButtons[i];
+    var isActive = b.dataset.tab === tabName;
+    b.classList.toggle('border-amber-600', isActive);
+    b.classList.toggle('text-amber-700', isActive);
+    b.classList.toggle('border-transparent', !isActive);
+    b.classList.toggle('text-slate-500', !isActive);
+  }
 
-    if (btn.dataset.tab === 'overview') refreshOverview();
+  Object.keys(tabPanels).forEach(function (key) {
+    if (tabPanels[key]) tabPanels[key].classList.add('hidden');
   });
+  targetPanel.classList.remove('hidden');
+
+  // Notify the rest of the app (e.g. to refresh Financial Overview figures)
+  // via a plain DOM event, so this block never needs to call app code
+  // directly and can never be broken by it.
+  document.dispatchEvent(new CustomEvent('handyman:tab-activated', { detail: { tabName: tabName } }));
+}
+
+for (var t = 0; t < tabButtons.length; t++) {
+  tabButtons[t].addEventListener('click', (function (btn) {
+    return function () { activateTab(btn.dataset.tab); };
+  })(tabButtons[t]));
+}
+
+/* ============================================================================
+   APP LOGIC (Supabase + forms + Financial Overview)
+   Everything below is wrapped in one try/catch. If Supabase's CDN script
+   fails to load, the keys are wrong, or any statement here throws, the
+   error is caught and logged instead of halting script execution — so the
+   tab navigation above (and the rest of the page) keeps working regardless.
+   ============================================================================ */
+try {
+
+/* ----------------------------------------------------------------------------
+   SUPABASE CONFIGURATION
+   Replace these two values with your own Supabase project's URL and anon
+   (public) API key — found under Project Settings -> API in your Supabase
+   dashboard. Run schema.sql in the SQL Editor first to create the tables.
+   -------------------------------------------------------------------------- */
+const SUPABASE_URL = 'https://pqjoypxipbjechumogrb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_SzP7POOf-wRu3kmU95LvHQ__IV-SkyX';
+
+const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+
+// Guard client creation individually too, so a Supabase-specific failure
+// (e.g. bad key format) doesn't need to unwind all the way to the outer
+// try/catch below just to report a clean "not configured" state.
+let supabase = null;
+if (isConfigured) {
+  try {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (err) {
+    console.error('Failed to initialize Supabase client:', err);
+  }
+}
+
+if (!isConfigured || !supabase) {
+  document.getElementById('configWarning').classList.remove('hidden');
+}
+
+// Refresh the Financial Overview whenever the Overview tab is activated —
+// listens for the plain DOM event dispatched by the tab-navigation block
+// above, so that block never has to reference this code directly.
+document.addEventListener('handyman:tab-activated', (e) => {
+  if (e.detail.tabName === 'overview') refreshOverview();
 });
+
+/* ----------------------------------------------------------------------------
+   Small helpers
+   -------------------------------------------------------------------------- */
+const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
 /* ============================================================================
    TAB 1: INVOICING GENERATOR
@@ -858,6 +904,15 @@ if (supabase) {
   loadIncome();
   loadExpenses();
   refreshOverview();
+}
+
+} catch (err) {
+  // Any failure anywhere in the app logic above (Supabase, forms, overview
+  // math) lands here instead of aborting script execution — tab navigation,
+  // wired independently at the top of this script, is unaffected either way.
+  console.error("Joe's Handyman app failed to initialize:", err);
+  const warning = document.getElementById('configWarning');
+  if (warning) warning.classList.remove('hidden');
 }
 </script>
 </body>
