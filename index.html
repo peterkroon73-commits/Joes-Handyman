@@ -439,9 +439,20 @@ const SUPABASE_URL = 'https://pqjoypxipbjechumogrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_SzP7POOf-wRu3kmU95LvHQ__IV-SkyX';
 
 const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
-const supabase = isConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-if (!isConfigured) {
+// Guard client creation: if the Supabase CDN script hasn't loaded (blocked,
+// slow network, etc.) this would otherwise throw and silently kill every
+// script statement below it — including the tab navigation wiring.
+let supabase = null;
+if (isConfigured) {
+  try {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (err) {
+    console.error('Failed to initialize Supabase client:', err);
+  }
+}
+
+if (!isConfigured || !supabase) {
   document.getElementById('configWarning').classList.remove('hidden');
 }
 
@@ -462,18 +473,26 @@ const tabPanels = {
   overview: document.getElementById('tab-overview'),
 };
 
-tabButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    tabButtons.forEach((b) => b.classList.remove('border-amber-600', 'text-amber-700'));
-    tabButtons.forEach((b) => b.classList.add('border-transparent', 'text-slate-500'));
-    btn.classList.add('border-amber-600', 'text-amber-700');
-    btn.classList.remove('border-transparent', 'text-slate-500');
+function activateTab(tabName) {
+  const targetPanel = tabPanels[tabName];
+  if (!targetPanel) return;
 
-    Object.values(tabPanels).forEach((panel) => panel.classList.add('hidden'));
-    tabPanels[btn.dataset.tab].classList.remove('hidden');
-
-    if (btn.dataset.tab === 'overview') refreshOverview();
+  tabButtons.forEach((b) => {
+    const isActive = b.dataset.tab === tabName;
+    b.classList.toggle('border-amber-600', isActive);
+    b.classList.toggle('text-amber-700', isActive);
+    b.classList.toggle('border-transparent', !isActive);
+    b.classList.toggle('text-slate-500', !isActive);
   });
+
+  Object.values(tabPanels).forEach((panel) => panel.classList.add('hidden'));
+  targetPanel.classList.remove('hidden');
+
+  if (tabName === 'overview') refreshOverview();
+}
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => activateTab(btn.dataset.tab));
 });
 
 /* ============================================================================
