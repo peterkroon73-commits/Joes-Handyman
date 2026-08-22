@@ -558,7 +558,7 @@ document.getElementById('saveInvoiceBtn').addEventListener('click', async () => 
   if (line_items.length === 0) return alert('Please add at least one line item.');
   if (!supabase) return alert('Supabase is not configured yet — see the warning banner above.');
 
-  const { error } = await supabase.from('invoices').insert([
+  const { error } = await supabase.from('handyman_invoices').insert([
     { client_name, client_email: client_email || null, line_items, total_amount, status },
   ]);
 
@@ -574,7 +574,7 @@ async function loadInvoices() {
   if (!supabase) return;
 
   const { data, error } = await supabase
-    .from('invoices')
+    .from('handyman_invoices')
     .select('*')
     .order('created_at', { ascending: false });
 
@@ -613,7 +613,7 @@ document.getElementById('invoicesBody').addEventListener('change', async (e) => 
   if (!e.target.classList.contains('status-select')) return;
   const id = e.target.dataset.id;
   const status = e.target.value;
-  const { error } = await supabase.from('invoices').update({ status }).eq('id', id);
+  const { error } = await supabase.from('handyman_invoices').update({ status }).eq('id', id);
   if (error) alert(`Error updating status: ${error.message}`);
   else refreshOverview();
 });
@@ -624,7 +624,7 @@ document.getElementById('invoicesBody').addEventListener('click', async (e) => {
 
   if (e.target.classList.contains('delete-invoice-btn')) {
     if (!confirm('Delete this invoice?')) return;
-    const { error } = await supabase.from('invoices').delete().eq('id', id);
+    const { error } = await supabase.from('handyman_invoices').delete().eq('id', id);
     if (error) alert(`Error deleting invoice: ${error.message}`);
     else { loadInvoices(); refreshOverview(); }
   }
@@ -672,7 +672,7 @@ document.getElementById('saveIncomeBtn').addEventListener('click', async () => {
   if (amount <= 0) return alert('Please enter an amount greater than zero.');
   if (!supabase) return alert('Supabase is not configured yet — see the warning banner above.');
 
-  const { error } = await supabase.from('manual_income').insert([
+  const { error } = await supabase.from('handyman_manual_income').insert([
     { date, client_name, description: description || null, amount, payment_method },
   ]);
 
@@ -689,7 +689,7 @@ async function loadIncome() {
   if (!supabase) return;
 
   const { data, error } = await supabase
-    .from('manual_income')
+    .from('handyman_manual_income')
     .select('*')
     .order('date', { ascending: false });
 
@@ -720,7 +720,7 @@ async function loadIncome() {
 document.getElementById('incomeBody').addEventListener('click', async (e) => {
   if (!e.target.classList.contains('delete-income-btn')) return;
   if (!confirm('Delete this income entry?')) return;
-  const { error } = await supabase.from('manual_income').delete().eq('id', e.target.dataset.id);
+  const { error } = await supabase.from('handyman_manual_income').delete().eq('id', e.target.dataset.id);
   if (error) alert(`Error deleting entry: ${error.message}`);
   else { loadIncome(); refreshOverview(); }
 });
@@ -740,7 +740,7 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async () => 
   if (amount <= 0) return alert('Please enter an amount greater than zero.');
   if (!supabase) return alert('Supabase is not configured yet — see the warning banner above.');
 
-  const { error } = await supabase.from('expenses').insert([
+  const { error } = await supabase.from('handyman_expenses').insert([
     { date, category, description: description || null, amount, receipt_url: receipt_url || null },
   ]);
 
@@ -757,7 +757,7 @@ async function loadExpenses() {
   if (!supabase) return;
 
   const { data, error } = await supabase
-    .from('expenses')
+    .from('handyman_expenses')
     .select('*')
     .order('date', { ascending: false });
 
@@ -788,7 +788,7 @@ async function loadExpenses() {
 document.getElementById('expensesBody').addEventListener('click', async (e) => {
   if (!e.target.classList.contains('delete-expense-btn')) return;
   if (!confirm('Delete this expense?')) return;
-  const { error } = await supabase.from('expenses').delete().eq('id', e.target.dataset.id);
+  const { error } = await supabase.from('handyman_expenses').delete().eq('id', e.target.dataset.id);
   if (error) alert(`Error deleting expense: ${error.message}`);
   else { loadExpenses(); refreshOverview(); }
 });
@@ -807,9 +807,9 @@ async function refreshOverview() {
   if (!supabase) return;
 
   const [{ data: invoices }, { data: income }, { data: expenses }] = await Promise.all([
-    supabase.from('invoices').select('total_amount, status'),
-    supabase.from('manual_income').select('amount'),
-    supabase.from('expenses').select('amount'),
+    supabase.from('handyman_invoices').select('total_amount, status'),
+    supabase.from('handyman_manual_income').select('amount'),
+    supabase.from('handyman_expenses').select('amount'),
   ]);
 
   const paidInvoiceTotal = (invoices || [])
