@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Joe's Handyman — Business Records</title>
+
+<!-- Tailwind CSS (CDN build, no build step required) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Supabase JS client (CDN build) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  /* Print styles: hide everything except the invoice print area when printing */
+  @media print {
+    body * { visibility: hidden; }
+    #printArea, #printArea * { visibility: visible; }
+    #printArea {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+    }
+    .no-print { display: none !important; }
+  }
+  #printArea { display: none; }
+
+  /* Small helper for smooth tab fade-in */
+  .tab-panel { animation: fadeIn 0.15s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <!-- ==========================================================================
+       BUSINESS PROFILE HEADER
+       ========================================================================== -->
+  <header class="bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-lg no-print">
+    <div class="max-w-6xl mx-auto px-4 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="bg-white/20 rounded-xl p-3 text-3xl">🛠️</div>
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Joe's Handyman</h1>
+          <p class="text-amber-100 text-sm">Business Record-Keeping Dashboard</p>
+        </div>
+      </div>
+      <div class="text-sm sm:text-right text-amber-50 space-y-0.5">
+        <p><span class="font-semibold">ABN:</span> 72 478 252 687</p>
+        <p><span class="font-semibold">Mobile:</span> 0430 033 312</p>
+        <p><span class="font-semibold">Email:</span> sandy19673@bigpond.com</p>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       TABBED NAVIGATION
+       ========================================================================== -->
+  <nav class="bg-white border-b border-slate-200 sticky top-0 z-10 no-print shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 flex flex-wrap gap-1 sm:gap-2">
+      <button data-tab="invoicing" class="tab-btn px-4 py-3 text-sm sm:text-base font-medium border-b-2 border-amber-600 text-amber-700">📄 Invoicing Generator</button>
+      <button data-tab="income" class="tab-btn px-4 py-3 text-sm sm:text-base font-medium border-b-2 border-transparent text-slate-500 hover:text-amber-700">💵 Manual Income</button>
+      <button data-tab="expenses" class="tab-btn px-4 py-3 text-sm sm:text-base font-medium border-b-2 border-transparent text-slate-500 hover:text-amber-700">🧾 Expenses &amp; Receipts</button>
+      <button data-tab="overview" class="tab-btn px-4 py-3 text-sm sm:text-base font-medium border-b-2 border-transparent text-slate-500 hover:text-amber-700">📊 Financial Overview</button>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Connection status banner (shown if Supabase keys are not configured) -->
+    <div id="configWarning" class="hidden no-print bg-red-50 border border-red-300 text-red-800 rounded-lg px-4 py-3 text-sm">
+      ⚠️ Supabase is not configured yet. Open <code>index.html</code> and set <code>SUPABASE_URL</code> and
+      <code>SUPABASE_ANON_KEY</code> near the top of the <code>&lt;script&gt;</code> block, then run
+      <code>schema.sql</code> in your Supabase project's SQL editor.
+    </div>
+
+    <!-- ========================================================================
+         TAB 1: INVOICING GENERATOR
+         ======================================================================== -->
+    <section id="tab-invoicing" class="tab-panel space-y-6">
+      <div class="bg-white rounded-xl shadow p-5 no-print">
+        <h2 class="text-lg font-semibold mb-4 text-slate-800">Create Invoice</h2>
+
+        <div class="grid sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Client Name</label>
+            <input id="invClientName" type="text" required placeholder="e.g. Jane Smith"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Client Email</label>
+            <input id="invClientEmail" type="email" placeholder="jane@example.com"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+          </div>
+        </div>
+
+        <!-- Dynamic line items -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm mb-3">
+            <thead>
+              <tr class="text-left text-slate-500 border-b border-slate-200">
+                <th class="py-2 pr-2">Description</th>
+                <th class="py-2 px-2 w-20">Qty</th>
+                <th class="py-2 px-2 w-28">Rate ($)</th>
+                <th class="py-2 px-2 w-28">Amount ($)</th>
+                <th class="py-2 pl-2 w-10"></th>
+              </tr>
+            </thead>
+            <tbody id="lineItemsBody"><!-- rows injected by JS --></tbody>
+          </table>
+        </div>
+
+        <button id="addLineItemBtn" type="button"
+                class="text-amber-700 text-sm font-medium hover:underline mb-4">+ Add line item</button>
+
+        <div class="flex flex-wrap items-end justify-between gap-4 border-t border-slate-200 pt-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Status</label>
+            <select id="invStatus" class="rounded-lg border border-slate-300 px-3 py-2">
+              <option>Draft</option>
+              <option>Sent</option>
+              <option>Paid</option>
+              <option>Overdue</option>
+            </select>
+          </div>
+          <div class="text-right">
+            <p class="text-sm text-slate-500">Total</p>
+            <p id="invTotalDisplay" class="text-2xl font-bold text-amber-700">$0.00</p>
+          </div>
+        </div>
+
+        <div class="flex gap-3 mt-4">
+          <button id="saveInvoiceBtn" type="button"
+                  class="bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-2 rounded-lg shadow">
+            💾 Save Invoice
+          </button>
+          <button id="resetInvoiceBtn" type="button"
+                  class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-4 py-2 rounded-lg">
+            Clear Form
+          </button>
+        </div>
+      </div>
+
+      <!-- Saved invoices list -->
+      <div class="bg-white rounded-xl shadow p-5 no-print">
+        <h2 class="text-lg font-semibold mb-4 text-slate-800">Saved Invoices</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-500 border-b border-slate-200">
+                <th class="py-2 pr-2">Date</th>
+                <th class="py-2 px-2">Client</th>
+                <th class="py-2 px-2">Total</th>
+                <th class="py-2 px-2">Status</th>
+                <th class="py-2 pl-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="invoicesBody">
+              <tr><td colspan="5" class="py-4 text-center text-slate-400">No invoices yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         PRINT-FRIENDLY INVOICE LAYOUT (hidden on screen, shown only via print)
+         ======================================================================== -->
+    <div id="printArea">
+      <div style="max-width:700px;margin:0 auto;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #d97706;padding-bottom:16px;margin-bottom:16px;">
+          <div>
+            <h1 style="margin:0;font-size:24px;">Joe's Handyman</h1>
+            <p style="margin:4px 0 0;font-size:12px;">ABN: 72 478 252 687</p>
+            <p style="margin:2px 0 0;font-size:12px;">Mobile: 0430 033 312 &nbsp;|&nbsp; Email: sandy19673@bigpond.com</p>
+          </div>
+          <div style="text-align:right;">
+            <h2 style="margin:0;font-size:20px;color:#d97706;">INVOICE</h2>
+            <p style="margin:4px 0 0;font-size:12px;" id="printDate"></p>
+            <p style="margin:2px 0 0;font-size:12px;" id="printStatus"></p>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <p style="margin:0;font-size:13px;color:#64748b;">Billed To</p>
+          <p style="margin:2px 0 0;font-size:15px;font-weight:bold;" id="printClientName"></p>
+          <p style="margin:2px 0 0;font-size:13px;" id="printClientEmail"></p>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#fef3c7;text-align:left;">
+              <th style="padding:8px;border:1px solid #e2e8f0;">Description</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;width:60px;">Qty</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;width:80px;">Rate</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;width:90px;">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="printLineItems"></tbody>
+        </table>
+
+        <div style="text-align:right;margin-top:12px;">
+          <p style="font-size:16px;font-weight:bold;">Total: <span id="printTotal"></span></p>
+        </div>
+
+        <p style="margin-top:32px;font-size:11px;color:#94a3b8;">Thank you for your business — Joe's Handyman.</p>
+      </div>
+    </div>
+
+    <!-- ========================================================================
+         TAB 2: MANUAL INCOME
+         ======================================================================== -->
+    <section id="tab-income" class="tab-panel space-y-6 hidden">
+      <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-4 text-slate-800">Log Cash / External Payment</h2>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Date</label>
+            <input id="incDate" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Client Name</label>
+            <input id="incClientName" type="text" placeholder="e.g. Bob Wilson"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Payment Method</label>
+            <select id="incPaymentMethod" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option>Cash</option>
+              <option>Bank Transfer</option>
+              <option>Card</option>
+              <option>PayPal</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-slate-600 mb-1">Description</label>
+            <input id="incDescription" type="text" placeholder="e.g. Fence repair, back yard"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Amount ($)</label>
+            <input id="incAmount" type="number" min="0" step="0.01" placeholder="0.00"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+        </div>
+        <button id="saveIncomeBtn" type="button"
+                class="mt-4 bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-2 rounded-lg shadow">
+          💾 Log Income
+        </button>
+      </div>
+
+      <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-4 text-slate-800">Manual Income Entries</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-500 border-b border-slate-200">
+                <th class="py-2 pr-2">Date</th>
+                <th class="py-2 px-2">Client</th>
+                <th class="py-2 px-2">Description</th>
+                <th class="py-2 px-2">Method</th>
+                <th class="py-2 px-2">Amount</th>
+                <th class="py-2 pl-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="incomeBody">
+              <tr><td colspan="6" class="py-4 text-center text-slate-400">No income logged yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         TAB 3: EXPENSES & RECEIPTS
+         ======================================================================== -->
+    <section id="tab-expenses" class="tab-panel space-y-6 hidden">
+      <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-4 text-slate-800">Log Expense</h2>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Date</label>
+            <input id="expDate" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Category</label>
+            <select id="expCategory" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option>Materials</option>
+              <option>Fuel</option>
+              <option>Tools</option>
+              <option>Insurance</option>
+              <option>Vehicle</option>
+              <option>Advertising</option>
+              <option>General</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Amount ($)</label>
+            <input id="expAmount" type="number" min="0" step="0.01" placeholder="0.00"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-slate-600 mb-1">Description</label>
+            <input id="expDescription" type="text" placeholder="e.g. Timber from Bunnings"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">Receipt Link (URL)</label>
+            <input id="expReceiptUrl" type="url" placeholder="https://... (photo/scan link)"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </div>
+        </div>
+        <button id="saveExpenseBtn" type="button"
+                class="mt-4 bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-2 rounded-lg shadow">
+          💾 Log Expense
+        </button>
+      </div>
+
+      <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-4 text-slate-800">Expense Log</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-500 border-b border-slate-200">
+                <th class="py-2 pr-2">Date</th>
+                <th class="py-2 px-2">Category</th>
+                <th class="py-2 px-2">Description</th>
+                <th class="py-2 px-2">Amount</th>
+                <th class="py-2 px-2">Receipt</th>
+                <th class="py-2 pl-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expensesBody">
+              <tr><td colspan="6" class="py-4 text-center text-slate-400">No expenses logged yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         TAB 4: FINANCIAL OVERVIEW
+         ======================================================================== -->
+    <section id="tab-overview" class="tab-panel space-y-6 hidden">
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl shadow p-5">
+          <p class="text-sm text-slate-500">Total Income</p>
+          <p id="ovTotalIncome" class="text-2xl font-bold text-emerald-600 mt-1">$0.00</p>
+          <p class="text-xs text-slate-400 mt-1">Paid invoices + manual income</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5">
+          <p class="text-sm text-slate-500">Total Expenses</p>
+          <p id="ovTotalExpenses" class="text-2xl font-bold text-rose-600 mt-1">$0.00</p>
+          <p class="text-xs text-slate-400 mt-1">Logged running costs</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5">
+          <p class="text-sm text-slate-500">Gross Profit</p>
+          <p id="ovGrossProfit" class="text-2xl font-bold text-slate-800 mt-1">$0.00</p>
+          <p class="text-xs text-slate-400 mt-1">Income − Expenses</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 border-2 border-amber-400">
+          <p class="text-sm text-slate-500">Net Profit</p>
+          <p id="ovNetProfit" class="text-2xl font-bold text-amber-700 mt-1">$0.00</p>
+          <p class="text-xs text-slate-400 mt-1">After tax &amp; running-cost reserves</p>
+        </div>
+      </div>
+
+      <!-- Allocation breakdown -->
+      <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-1 text-slate-800">Profit Allocation</h2>
+        <p class="text-sm text-slate-500 mb-4">
+          Gross profit (income minus logged expenses) is automatically split so you always know how much
+          is safe to spend versus set aside.
+        </p>
+
+        <!-- Stacked allocation bar -->
+        <div class="w-full h-8 rounded-lg overflow-hidden flex text-xs font-medium text-white mb-4">
+          <div id="barTax" class="bg-red-500 flex items-center justify-center" style="width:22%">22%</div>
+          <div id="barRunning" class="bg-sky-500 flex items-center justify-center" style="width:18%">18%</div>
+          <div id="barNet" class="bg-emerald-500 flex items-center justify-center" style="width:60%">60%</div>
+        </div>
+
+        <div class="grid sm:grid-cols-3 gap-4">
+          <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+            <p class="text-sm font-medium text-red-700">🧮 Tax Reserve (22%)</p>
+            <p id="ovTaxReserve" class="text-xl font-bold text-red-700 mt-1">$0.00</p>
+            <p class="text-xs text-red-500 mt-1">Set aside for BAS / income tax</p>
+          </div>
+          <div class="rounded-lg border border-sky-200 bg-sky-50 p-4">
+            <p class="text-sm font-medium text-sky-700">⚙️ Running Costs (18%)</p>
+            <p id="ovRunningCosts" class="text-xl font-bold text-sky-700 mt-1">$0.00</p>
+            <p class="text-xs text-sky-500 mt-1">Buffer for tools, vehicle, insurance</p>
+          </div>
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+            <p class="text-sm font-medium text-emerald-700">✅ Net Profit (60%)</p>
+            <p id="ovNetProfit2" class="text-xl font-bold text-emerald-700 mt-1">$0.00</p>
+            <p class="text-xs text-emerald-500 mt-1">Yours to keep</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="bg-white rounded-xl shadow p-5">
+          <h3 class="font-semibold text-slate-800 mb-2">Income Breakdown</h3>
+          <div class="flex justify-between text-sm py-1"><span class="text-slate-500">Paid invoices</span><span id="ovInvoiceIncome" class="font-medium">$0.00</span></div>
+          <div class="flex justify-between text-sm py-1"><span class="text-slate-500">Manual income</span><span id="ovManualIncome" class="font-medium">$0.00</span></div>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5">
+          <h3 class="font-semibold text-slate-800 mb-2">Outstanding</h3>
+          <div class="flex justify-between text-sm py-1"><span class="text-slate-500">Sent (awaiting payment)</span><span id="ovOutstandingSent" class="font-medium">$0.00</span></div>
+          <div class="flex justify-between text-sm py-1"><span class="text-slate-500">Overdue</span><span id="ovOutstandingOverdue" class="font-medium text-rose-600">$0.00</span></div>
+        </div>
+      </div>
+
+      <button id="refreshOverviewBtn" type="button"
+              class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-4 py-2 rounded-lg">
+        🔄 Refresh Figures
+      </button>
+    </section>
+
+  </main>
+
+  <footer class="text-center text-xs text-slate-400 py-6 no-print">
+    Joe's Handyman &middot; ABN 72 478 252 687 &middot; Internal record-keeping tool
+  </footer>
+
+<script>
+/* ============================================================================
+   SUPABASE CONFIGURATION
+   Replace these two values with your own Supabase project's URL and anon
+   (public) API key — found under Project Settings -> API in your Supabase
+   dashboard. Run schema.sql in the SQL Editor first to create the tables.
+   ============================================================================ */
+const SUPABASE_URL = 'https://pqjoypxipbjechumogrb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_SzP7POOf-wRu3kmU95LvHQ__IV-SkyX';
+
+const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+const supabase = isConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+if (!isConfigured) {
+  document.getElementById('configWarning').classList.remove('hidden');
+}
+
+/* ----------------------------------------------------------------------------
+   Small helpers
+   -------------------------------------------------------------------------- */
+const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/* ============================================================================
+   TAB NAVIGATION
+   ============================================================================ */
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabPanels = {
+  invoicing: document.getElementById('tab-invoicing'),
+  income: document.getElementById('tab-income'),
+  expenses: document.getElementById('tab-expenses'),
+  overview: document.getElementById('tab-overview'),
+};
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    tabButtons.forEach((b) => b.classList.remove('border-amber-600', 'text-amber-700'));
+    tabButtons.forEach((b) => b.classList.add('border-transparent', 'text-slate-500'));
+    btn.classList.add('border-amber-600', 'text-amber-700');
+    btn.classList.remove('border-transparent', 'text-slate-500');
+
+    Object.values(tabPanels).forEach((panel) => panel.classList.add('hidden'));
+    tabPanels[btn.dataset.tab].classList.remove('hidden');
+
+    if (btn.dataset.tab === 'overview') refreshOverview();
+  });
+});
+
+/* ============================================================================
+   TAB 1: INVOICING GENERATOR
+   ============================================================================ */
+const lineItemsBody = document.getElementById('lineItemsBody');
+const invTotalDisplay = document.getElementById('invTotalDisplay');
+
+function addLineItem(description = '', qty = 1, rate = 0) {
+  const row = document.createElement('tr');
+  row.className = 'line-item-row border-b border-slate-100';
+  row.innerHTML = `
+    <td class="py-1 pr-2"><input type="text" value="${description}" placeholder="e.g. Fix leaking tap"
+        class="li-desc w-full rounded border border-slate-300 px-2 py-1" /></td>
+    <td class="py-1 px-2"><input type="number" min="0" step="1" value="${qty}"
+        class="li-qty w-full rounded border border-slate-300 px-2 py-1" /></td>
+    <td class="py-1 px-2"><input type="number" min="0" step="0.01" value="${rate}"
+        class="li-rate w-full rounded border border-slate-300 px-2 py-1" /></td>
+    <td class="py-1 px-2 li-amount text-right pr-2">$0.00</td>
+    <td class="py-1 pl-2 text-center">
+      <button type="button" class="li-remove text-rose-500 hover:text-rose-700 font-bold">✕</button>
+    </td>
+  `;
+  lineItemsBody.appendChild(row);
+  recalcInvoiceTotal();
+}
+
+function recalcInvoiceTotal() {
+  let total = 0;
+  document.querySelectorAll('.line-item-row').forEach((row) => {
+    const qty = parseFloat(row.querySelector('.li-qty').value) || 0;
+    const rate = parseFloat(row.querySelector('.li-rate').value) || 0;
+    const amount = qty * rate;
+    row.querySelector('.li-amount').textContent = money(amount);
+    total += amount;
+  });
+  invTotalDisplay.textContent = money(total);
+  return total;
+}
+
+// Event delegation for line item inputs/remove buttons
+lineItemsBody.addEventListener('input', recalcInvoiceTotal);
+lineItemsBody.addEventListener('click', (e) => {
+  if (e.target.classList.contains('li-remove')) {
+    e.target.closest('tr').remove();
+    recalcInvoiceTotal();
+  }
+});
+
+document.getElementById('addLineItemBtn').addEventListener('click', () => addLineItem());
+
+function collectLineItems() {
+  const items = [];
+  document.querySelectorAll('.line-item-row').forEach((row) => {
+    const description = row.querySelector('.li-desc').value.trim();
+    const qty = parseFloat(row.querySelector('.li-qty').value) || 0;
+    const rate = parseFloat(row.querySelector('.li-rate').value) || 0;
+    if (description) {
+      items.push({ description, qty, rate, amount: qty * rate });
+    }
+  });
+  return items;
+}
+
+function resetInvoiceForm() {
+  document.getElementById('invClientName').value = '';
+  document.getElementById('invClientEmail').value = '';
+  document.getElementById('invStatus').value = 'Draft';
+  lineItemsBody.innerHTML = '';
+  addLineItem();
+}
+document.getElementById('resetInvoiceBtn').addEventListener('click', resetInvoiceForm);
+
+document.getElementById('saveInvoiceBtn').addEventListener('click', async () => {
+  const client_name = document.getElementById('invClientName').value.trim();
+  const client_email = document.getElementById('invClientEmail').value.trim();
+  const status = document.getElementById('invStatus').value;
+  const line_items = collectLineItems();
+  const total_amount = collectLineItems().reduce((sum, i) => sum + i.amount, 0);
+
+  if (!client_name) return alert('Please enter a client name.');
+  if (line_items.length === 0) return alert('Please add at least one line item.');
+  if (!supabase) return alert('Supabase is not configured yet — see the warning banner above.');
+
+  const { error } = await supabase.from('handyman_invoices').insert([
+    { client_name, client_email: client_email || null, line_items, total_amount, status },
+  ]);
+
+  if (error) return alert(`Error saving invoice: ${error.message}`);
+
+  resetInvoiceForm();
+  loadInvoices();
+  alert('Invoice saved!');
+});
+
+async function loadInvoices() {
+  const tbody = document.getElementById('invoicesBody');
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from('handyman_invoices')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-rose-500">Error: ${error.message}</td></tr>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-400">No invoices yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map((inv) => `
+    <tr class="border-b border-slate-100">
+      <td class="py-2 pr-2">${new Date(inv.created_at).toLocaleDateString()}</td>
+      <td class="py-2 px-2">${inv.client_name}</td>
+      <td class="py-2 px-2">${money(inv.total_amount)}</td>
+      <td class="py-2 px-2">
+        <select data-id="${inv.id}" class="status-select rounded border border-slate-300 px-2 py-1 text-xs">
+          ${['Draft', 'Sent', 'Paid', 'Overdue'].map((s) => `<option ${s === inv.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td class="py-2 pl-2 text-right space-x-2 whitespace-nowrap">
+        <button data-id="${inv.id}" class="print-btn text-sky-600 hover:underline text-xs">Print</button>
+        <button data-id="${inv.id}" class="delete-invoice-btn text-rose-500 hover:underline text-xs">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+
+  // Store fetched invoices for print lookup
+  window.__invoicesCache = data;
+}
+
+document.getElementById('invoicesBody').addEventListener('change', async (e) => {
+  if (!e.target.classList.contains('status-select')) return;
+  const id = e.target.dataset.id;
+  const status = e.target.value;
+  const { error } = await supabase.from('handyman_invoices').update({ status }).eq('id', id);
+  if (error) alert(`Error updating status: ${error.message}`);
+  else refreshOverview();
+});
+
+document.getElementById('invoicesBody').addEventListener('click', async (e) => {
+  const id = e.target.dataset.id;
+  if (!id) return;
+
+  if (e.target.classList.contains('delete-invoice-btn')) {
+    if (!confirm('Delete this invoice?')) return;
+    const { error } = await supabase.from('handyman_invoices').delete().eq('id', id);
+    if (error) alert(`Error deleting invoice: ${error.message}`);
+    else { loadInvoices(); refreshOverview(); }
+  }
+
+  if (e.target.classList.contains('print-btn')) {
+    const inv = (window.__invoicesCache || []).find((i) => i.id === id);
+    if (inv) printInvoice(inv);
+  }
+});
+
+function printInvoice(inv) {
+  document.getElementById('printDate').textContent = `Date: ${new Date(inv.created_at).toLocaleDateString()}`;
+  document.getElementById('printStatus').textContent = `Status: ${inv.status}`;
+  document.getElementById('printClientName').textContent = inv.client_name;
+  document.getElementById('printClientEmail').textContent = inv.client_email || '';
+  document.getElementById('printLineItems').innerHTML = (inv.line_items || []).map((item) => `
+    <tr>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${item.description}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${item.qty}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${money(item.rate)}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${money(item.amount)}</td>
+    </tr>
+  `).join('');
+  document.getElementById('printTotal').textContent = money(inv.total_amount);
+
+  const printArea = document.getElementById('printArea');
+  printArea.style.display = 'block';
+  window.print();
+  printArea.style.display = 'none';
+}
+
+/* ============================================================================
+   TAB 2: MANUAL INCOME
+   ============================================================================ */
+document.getElementById('incDate').value = todayISO();
+
+document.getElementById('saveIncomeBtn').addEventListener('click', async () => {
+  const date = document.getElementById('incDate').value || todayISO();
+  const client_name = document.getElementById('incClientName').value.trim();
+  const description = document.getElementById('incDescription').value.trim();
+  const amount = parseFloat(document.getElementById('incAmount').value) || 0;
+  const payment_method = document.getElementById('incPaymentMethod').value;
+
+  if (!client_name) return alert('Please enter a client name.');
+  if (amount <= 0) return alert('Please enter an amount greater than zero.');
+  if (!supabase) return alert('Supabase is not configured yet — see the warning banner above.');
+
+  const { error } = await supabase.from('handyman_manual_income').insert([
+    { date, client_name, description: description || null, amount, payment_method },
+  ]);
+
+  if (error) return alert(`Error logging income: ${error.message}`);
+
+  document.getElementById('incClientName').value = '';
+  document.getElementById('incDescription').value = '';
+  document.getElementById('incAmount').value = '';
+  loadIncome();
+});
+
+async function loadIncome() {
+  const tbody = document.getElementById('incomeBody');
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from('handyman_manual_income')
+    .select('*')
+    .order('date', { ascending: false });
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-500">Error: ${error.message}</td></tr>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">No income logged yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map((row) => `
+    <tr class="border-b border-slate-100">
+      <td class="py-2 pr-2">${row.date}</td>
+      <td class="py-2 px-2">${row.client_name}</td>
+      <td class="py-2 px-2">${row.description || '—'}</td>
+      <td class="py-2 px-2">${row.payment_method}</td>
+      <td class="py-2 px-2">${money(row.amount)}</td>
+      <td class="py-2 pl-2 text-right">
+        <button data-id="${row.id}" class="delete-income-btn text-rose-500 hover:underline text-xs">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('incomeBody').addEventListener('click', async (e) => {
+  if (!e.target.classList.contains('delete-income-btn')) return;
+  if (!confirm('Delete this income entry?')) return;
+  const { error } = await supabase.from('handyman_manual_income').delete().eq('id', e.target.dataset.id);
+  if (error) alert(`Error deleting entry: ${error.message}`);
+  else { loadIncome(); refreshOverview(); }
+});
+
+/* ============================================================================
+   TAB 3: EXPENSES & RECEIPTS
+   ============================================================================ */
+document.getElementById('expDate').value = todayISO();
+
+document.getElementById('saveExpenseBtn').addEventListener('click', async () => {
+  const date = document.getElementById('expDate').value || todayISO();
+  const category = document.getElementById('expCategory').value;
+  const description = document.getElementById('expDescription').value.trim();
+  const amount = parseFloat(document.getElementById('expAmount').value) || 0;
+  const receipt_url = document.getElementById('expReceiptUrl').value.trim();
+
+  if (amount <= 0) return alert('Please enter an amount greater than zero.');
+  if (!supabase) return alert('Supabase is not configured yet — see the warning banner above.');
+
+  const { error } = await supabase.from('handyman_expenses').insert([
+    { date, category, description: description || null, amount, receipt_url: receipt_url || null },
+  ]);
+
+  if (error) return alert(`Error logging expense: ${error.message}`);
+
+  document.getElementById('expDescription').value = '';
+  document.getElementById('expAmount').value = '';
+  document.getElementById('expReceiptUrl').value = '';
+  loadExpenses();
+});
+
+async function loadExpenses() {
+  const tbody = document.getElementById('expensesBody');
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from('handyman_expenses')
+    .select('*')
+    .order('date', { ascending: false });
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-500">Error: ${error.message}</td></tr>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">No expenses logged yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map((row) => `
+    <tr class="border-b border-slate-100">
+      <td class="py-2 pr-2">${row.date}</td>
+      <td class="py-2 px-2">${row.category}</td>
+      <td class="py-2 px-2">${row.description || '—'}</td>
+      <td class="py-2 px-2">${money(row.amount)}</td>
+      <td class="py-2 px-2">${row.receipt_url ? `<a href="${row.receipt_url}" target="_blank" rel="noopener" class="text-sky-600 hover:underline">View</a>` : '—'}</td>
+      <td class="py-2 pl-2 text-right">
+        <button data-id="${row.id}" class="delete-expense-btn text-rose-500 hover:underline text-xs">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('expensesBody').addEventListener('click', async (e) => {
+  if (!e.target.classList.contains('delete-expense-btn')) return;
+  if (!confirm('Delete this expense?')) return;
+  const { error } = await supabase.from('handyman_expenses').delete().eq('id', e.target.dataset.id);
+  if (error) alert(`Error deleting expense: ${error.message}`);
+  else { loadExpenses(); refreshOverview(); }
+});
+
+/* ============================================================================
+   TAB 4: FINANCIAL OVERVIEW
+   Income = Paid invoices + all manual income.
+   Gross Profit = Income − logged Expenses.
+   Gross Profit is then split: 22% Tax Reserve, 18% Running Costs Reserve,
+   remaining 60% is Net Profit.
+   ============================================================================ */
+const TAX_RATE = 0.22;
+const RUNNING_COST_RATE = 0.18;
+
+async function refreshOverview() {
+  if (!supabase) return;
+
+  const [{ data: invoices }, { data: income }, { data: expenses }] = await Promise.all([
+    supabase.from('handyman_invoices').select('total_amount, status'),
+    supabase.from('handyman_manual_income').select('amount'),
+    supabase.from('handyman_expenses').select('amount'),
+  ]);
+
+  const paidInvoiceTotal = (invoices || [])
+    .filter((i) => i.status === 'Paid')
+    .reduce((sum, i) => sum + Number(i.total_amount || 0), 0);
+
+  const sentTotal = (invoices || [])
+    .filter((i) => i.status === 'Sent')
+    .reduce((sum, i) => sum + Number(i.total_amount || 0), 0);
+
+  const overdueTotal = (invoices || [])
+    .filter((i) => i.status === 'Overdue')
+    .reduce((sum, i) => sum + Number(i.total_amount || 0), 0);
+
+  const manualIncomeTotal = (income || []).reduce((sum, i) => sum + Number(i.amount || 0), 0);
+  const totalIncome = paidInvoiceTotal + manualIncomeTotal;
+
+  const totalExpenses = (expenses || []).reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+  const grossProfit = totalIncome - totalExpenses;
+  const taxReserve = Math.max(grossProfit, 0) * TAX_RATE;
+  const runningCostsReserve = Math.max(grossProfit, 0) * RUNNING_COST_RATE;
+  const netProfit = grossProfit - taxReserve - runningCostsReserve;
+
+  document.getElementById('ovTotalIncome').textContent = money(totalIncome);
+  document.getElementById('ovTotalExpenses').textContent = money(totalExpenses);
+  document.getElementById('ovGrossProfit').textContent = money(grossProfit);
+  document.getElementById('ovNetProfit').textContent = money(netProfit);
+  document.getElementById('ovNetProfit2').textContent = money(netProfit);
+  document.getElementById('ovTaxReserve').textContent = money(taxReserve);
+  document.getElementById('ovRunningCosts').textContent = money(runningCostsReserve);
+  document.getElementById('ovInvoiceIncome').textContent = money(paidInvoiceTotal);
+  document.getElementById('ovManualIncome').textContent = money(manualIncomeTotal);
+  document.getElementById('ovOutstandingSent').textContent = money(sentTotal);
+  document.getElementById('ovOutstandingOverdue').textContent = money(overdueTotal);
+}
+
+document.getElementById('refreshOverviewBtn').addEventListener('click', refreshOverview);
+
+/* ============================================================================
+   INITIAL LOAD
+   ============================================================================ */
+addLineItem(); // start invoice form with one empty line item
+if (supabase) {
+  loadInvoices();
+  loadIncome();
+  loadExpenses();
+  refreshOverview();
+}
+</script>
+</body>
+</html>
