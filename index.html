@@ -435,8 +435,8 @@
    (public) API key — found under Project Settings -> API in your Supabase
    dashboard. Run schema.sql in the SQL Editor first to create the tables.
    ============================================================================ */
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://pqjoypxipbjechumogrb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_SzP7POOf-wRu3kmU95LvHQ__IV-SkyX';
 
 const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
 const supabase = isConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
