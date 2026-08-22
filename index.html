@@ -500,7 +500,7 @@
 
         <div class="grid sm:grid-cols-3 gap-4">
           <div class="rounded-lg border border-red-200 bg-red-50 p-4">
-            <p class="text-sm font-medium text-red-700">🧮 Tax Reserve (22%)</p>
+            <p class="text-sm font-medium text-red-700">🧮 True Net Income Tax (22%)</p>
             <p id="ovTaxReserve" class="text-xl font-bold text-red-700 mt-1">$0.00</p>
             <p class="text-xs text-red-500 mt-1">Set aside for BAS / income tax</p>
           </div>
@@ -513,6 +513,32 @@
             <p class="text-sm font-medium text-emerald-700">✅ Net Profit (60%)</p>
             <p id="ovNetProfit2" class="text-xl font-bold text-emerald-700 mt-1">$0.00</p>
             <p class="text-xs text-emerald-500 mt-1">Yours to keep</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAYG / BAS tax tracking: gross (myGov) vs. true net, and the gap between them -->
+      <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-1 text-slate-800">PAYG / BAS Tax Tracking</h2>
+        <p class="text-sm text-slate-500 mb-4">
+          Compares the gross PAYG instalment myGov estimates from your sales against your true net tax after
+          expense deductions.
+        </p>
+        <div class="grid sm:grid-cols-3 gap-4">
+          <div class="rounded-lg border border-orange-200 bg-orange-50 p-4">
+            <p class="text-sm font-medium text-orange-700">🏛️ PAYG Gross BAS Tax (22%)</p>
+            <p id="ovGrossBasTax" class="text-xl font-bold text-orange-700 mt-1">$0.00</p>
+            <p class="text-xs text-orange-500 mt-1">22% of total gross income (sales), before expenses — matches myGov</p>
+          </div>
+          <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+            <p class="text-sm font-medium text-red-700">🧮 True Net Income Tax (22%)</p>
+            <p id="ovTrueNetTax" class="text-xl font-bold text-red-700 mt-1">$0.00</p>
+            <p class="text-xs text-red-500 mt-1">22% of income after expenses are subtracted</p>
+          </div>
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+            <p class="text-sm font-medium text-emerald-700">💰 Tax Buffer / Year-End Refund</p>
+            <p id="ovTaxBuffer" class="text-xl font-bold text-emerald-700 mt-1">$0.00</p>
+            <p class="text-xs text-emerald-500 mt-1">Extra savings returned to you at tax time via your expense deductions</p>
           </div>
         </div>
       </div>
@@ -1234,6 +1260,15 @@ async function refreshOverview() {
   const runningCostsReserve = Math.max(grossProfit, 0) * RUNNING_COST_RATE;
   const netProfit = grossProfit - taxReserve - runningCostsReserve;
 
+  // PAYG / BAS tax tracking (read-only derived figures — does not feed back
+  // into taxReserve, runningCostsReserve, or netProfit above).
+  // grossBasTax: 22% of total gross income before expenses, matching the
+  // PAYG instalment estimate myGov calculates from sales.
+  // taxBuffer: the gap between that gross estimate and the true net tax
+  // (taxReserve) — i.e. the extra saved via expense deductions.
+  const grossBasTax = totalIncome * TAX_RATE;
+  const taxBuffer = grossBasTax - taxReserve;
+
   document.getElementById('ovTotalIncome').textContent = money(totalIncome);
   document.getElementById('ovTotalExpenses').textContent = money(totalExpenses);
   document.getElementById('ovGrossProfit').textContent = money(grossProfit);
@@ -1241,6 +1276,9 @@ async function refreshOverview() {
   document.getElementById('ovNetProfit2').textContent = money(netProfit);
   document.getElementById('ovTaxReserve').textContent = money(taxReserve);
   document.getElementById('ovRunningCosts').textContent = money(runningCostsReserve);
+  document.getElementById('ovGrossBasTax').textContent = money(grossBasTax);
+  document.getElementById('ovTrueNetTax').textContent = money(taxReserve);
+  document.getElementById('ovTaxBuffer').textContent = money(taxBuffer);
   document.getElementById('ovInvoiceIncome').textContent = money(paidInvoiceTotal);
   document.getElementById('ovManualIncome').textContent = money(manualIncomeTotal);
   document.getElementById('ovOutstandingSent').textContent = money(sentTotal);
