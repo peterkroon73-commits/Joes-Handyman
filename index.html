@@ -183,7 +183,8 @@
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-slate-500 border-b border-slate-200">
-                <th class="py-2 pr-2">Date</th>
+                <th class="py-2 pr-2">Invoice #</th>
+                <th class="py-2 px-2">Date</th>
                 <th class="py-2 px-2">Client</th>
                 <th class="py-2 px-2">Total</th>
                 <th class="py-2 px-2">Status</th>
@@ -191,7 +192,7 @@
               </tr>
             </thead>
             <tbody id="invoicesBody">
-              <tr><td colspan="5" class="py-4 text-center text-slate-400">No invoices yet.</td></tr>
+              <tr><td colspan="6" class="py-4 text-center text-slate-400">No invoices yet.</td></tr>
             </tbody>
           </table>
         </div>
@@ -211,7 +212,8 @@
           </div>
           <div style="text-align:right;">
             <h2 style="margin:0;font-size:20px;color:#d97706;">INVOICE</h2>
-            <p style="margin:4px 0 0;font-size:12px;" id="printDate"></p>
+            <p style="margin:4px 0 0;font-size:12px;font-weight:bold;" id="printInvoiceNumber"></p>
+            <p style="margin:2px 0 0;font-size:12px;" id="printDate"></p>
             <p style="margin:2px 0 0;font-size:12px;" id="printStatus"></p>
           </div>
         </div>
@@ -806,6 +808,17 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 /* ============================================================================
    TAB 1: INVOICING GENERATOR
    ============================================================================ */
+/**
+ * @typedef {Object} HandymanInvoice
+ * @property {string} id - uuid primary key
+ * @property {number} invoice_number - db-generated incremental sequence (public.handyman_invoices), read-only
+ * @property {string} created_at
+ * @property {string} client_name
+ * @property {string|null} client_email
+ * @property {{description: string, qty: number, rate: number, amount: number}[]} line_items
+ * @property {number} total_amount
+ * @property {'Draft'|'Sent'|'Paid'|'Overdue'} status
+ */
 const lineItemsBody = document.getElementById('lineItemsBody');
 const invTotalDisplay = document.getElementById('invTotalDisplay');
 
@@ -885,6 +898,8 @@ document.getElementById('saveInvoiceBtn').addEventListener('click', async () => 
   if (line_items.length === 0) return alert('Please add at least one line item.');
   if (!supabase) return alert('Supabase is not configured yet — see the warning banner above.');
 
+  // invoice_number is intentionally omitted — the db generates it automatically
+  // (incremental sequence on public.handyman_invoices).
   const { error } = await supabase.from('handyman_invoices').insert([
     { client_name, client_email: client_email || null, line_items, total_amount, status },
   ]);
@@ -906,18 +921,19 @@ async function loadInvoices() {
     .order('created_at', { ascending: false });
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-rose-500">Error: ${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-500">Error: ${error.message}</td></tr>`;
     return;
   }
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-400">No invoices yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">No invoices yet.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = data.map((inv) => `
     <tr class="border-b border-slate-100">
-      <td class="py-2 pr-2">${new Date(inv.created_at).toLocaleDateString()}</td>
+      <td class="py-2 pr-2 font-medium text-slate-700">#${inv.invoice_number}</td>
+      <td class="py-2 px-2">${new Date(inv.created_at).toLocaleDateString()}</td>
       <td class="py-2 px-2">${inv.client_name}</td>
       <td class="py-2 px-2">${money(inv.total_amount)}</td>
       <td class="py-2 px-2">
@@ -969,6 +985,7 @@ document.getElementById('invoicesBody').addEventListener('click', async (e) => {
 });
 
 function printInvoice(inv) {
+  document.getElementById('printInvoiceNumber').textContent = `#${inv.invoice_number}`;
   document.getElementById('printDate').textContent = `Date: ${new Date(inv.created_at).toLocaleDateString()}`;
   document.getElementById('printStatus').textContent = `Status: ${inv.status}`;
   document.getElementById('printClientName').textContent = inv.client_name;
@@ -1012,7 +1029,7 @@ function closeEmailInvoiceModal() {
 }
 
 function buildInvoiceEmailSubject(inv) {
-  return `Invoice from Joe's Handyman — ${inv.client_name}`;
+  return `Invoice #${inv.invoice_number} from Joe's Handyman — ${inv.client_name}`;
 }
 
 function buildInvoiceEmailBody(inv) {
@@ -1022,7 +1039,7 @@ function buildInvoiceEmailBody(inv) {
     'Please find your invoice details below.',
     '',
     '----------------------------------------',
-    'INVOICE',
+    `INVOICE #${inv.invoice_number}`,
     '----------------------------------------',
   ];
   (inv.line_items || []).forEach((item) => {
