@@ -19,14 +19,15 @@ create extension if not exists pgcrypto;
 -- e.g. [{"description":"Fix leaking tap","qty":1,"rate":120,"amount":120}]
 -- -----------------------------------------------------------------------------
 create table if not exists public.handyman_invoices (
-  id           uuid primary key default gen_random_uuid(),
-  created_at   timestamptz not null default now(),
-  client_name  text not null,
-  client_email text,
-  line_items   jsonb not null default '[]'::jsonb,
-  total_amount numeric(12, 2) not null default 0,
-  status       text not null default 'Draft'
-               check (status in ('Draft', 'Sent', 'Paid', 'Overdue'))
+  id             uuid primary key default gen_random_uuid(),
+  invoice_number integer generated always as identity unique,
+  created_at     timestamptz not null default now(),
+  client_name    text not null,
+  client_email   text,
+  line_items     jsonb not null default '[]'::jsonb,
+  total_amount   numeric(12, 2) not null default 0,
+  status         text not null default 'Draft'
+                 check (status in ('Draft', 'Sent', 'Paid', 'Overdue'))
 );
 
 comment on table public.handyman_invoices is 'Digitally generated client invoices with line items and status.';
